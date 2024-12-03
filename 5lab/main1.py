@@ -5,7 +5,6 @@ import requests
 import asyncio
 import sqlite3
 
-
 # Подключение к БД
 def create_connection():
     DB = QtSql.QSqlDatabase.addDatabase('QSQLITE')
@@ -14,36 +13,6 @@ def create_connection():
         QtWidgets.QMessageBox.critical(None, "Ошибка", "Не удалось подключиться к базе данных.")
         return False
     return True
-
-
-def create_table():
-    connection = sqlite3.connect('posts.db')
-    cursor = connection.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS posts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            title TEXT,
-            body TEXT
-        )
-    ''')
-    connection.commit()
-    connection.close()
-
-
-def add_record():
-    row = main_model.rowCount()
-    main_model.insertRow(row)
-    main_model.setData(main_model.index(row, 1), postUserID_text.text())
-    main_model.setData(main_model.index(row, 2), postTitle_text.text())
-    main_model.setData(main_model.index(row, 3), postBody_text.text())
-    if not main_model.submitAll():
-        QtWidgets.QMessageBox.warning(None, "Ошибка", "Не удалось добавить запись.")
-    else:
-        postUserID_text.clear()
-        postTitle_text.clear()
-        postBody_text.clear()
-        main_model.select()
 
 
 def display_selected_row(index):
@@ -91,6 +60,52 @@ def search_post():
     main_model.select()
 
 
+class AddRecordWindow(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Добавить запись")
+        self.resize(400, 200)
+
+        self.postUserID_text = QtWidgets.QLineEdit()
+        self.postTitle_text = QtWidgets.QLineEdit()
+        self.postBody_text = QtWidgets.QLineEdit()
+
+        self.postUserID_text.setPlaceholderText("UserID")
+        self.postTitle_text.setPlaceholderText("Title")
+        self.postBody_text.setPlaceholderText("Body")
+
+        self.add_btn = QtWidgets.QPushButton("Добавить")
+        self.cancel_btn = QtWidgets.QPushButton("Отменить")
+
+        self.add_btn.clicked.connect(self.add_record)
+        self.cancel_btn.clicked.connect(self.close)
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(self.postUserID_text)
+        layout.addWidget(self.postTitle_text)
+        layout.addWidget(self.postBody_text)
+        layout.addWidget(self.add_btn)
+        layout.addWidget(self.cancel_btn)
+
+        self.setLayout(layout)
+
+    def add_record(self):
+        row = main_model.rowCount()
+        main_model.insertRow(row)
+        main_model.setData(main_model.index(row, 1), self.postUserID_text.text())
+        main_model.setData(main_model.index(row, 2), self.postTitle_text.text())
+        main_model.setData(main_model.index(row, 3), self.postBody_text.text())
+
+        if not main_model.submitAll():
+            QtWidgets.QMessageBox.warning(None, "Ошибка", "Не удалось добавить запись.")
+        else:
+            self.postUserID_text.clear()
+            self.postTitle_text.clear()
+            self.postBody_text.clear()
+            main_model.select()
+            self.close()
+
+
 class UploadWorker(QtCore.QThread):
     progress_updated = QtCore.pyqtSignal(int)
     upload_finished = QtCore.pyqtSignal()
@@ -113,7 +128,7 @@ class UploadWorker(QtCore.QThread):
         connection = sqlite3.connect('posts.db')
         cursor = connection.cursor()
         for index, onepost in enumerate(posts):
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.5)
             cursor.execute("INSERT INTO posts(user_id, title, body) VALUES (?, ?, ?)",
                            (onepost["userId"], onepost["title"], onepost["body"]))
             connection.commit()
@@ -123,11 +138,9 @@ class UploadWorker(QtCore.QThread):
         status_label.setText("Загрузка данных завершена!")
         self.upload_finished.emit()
         main_model.select()
-
-
+        
 class UpdateWorker(QtCore.QThread):
     update_finished = QtCore.pyqtSignal()
-
     def run(self):
         asyncio.run(self.check_for_updates_async())
 
@@ -135,15 +148,12 @@ class UpdateWorker(QtCore.QThread):
         url = "https://jsonplaceholder.typicode.com/posts"
         await asyncio.sleep(2)
         new_posts = requests.get(url).json()
-
-        
         connection = sqlite3.connect('posts.db')
         cursor = connection.cursor()
-
-        
         cursor.execute("SELECT user_id, title, body FROM posts")
         existing_posts = cursor.fetchall()
 
+        
         for post in new_posts:
             if (post["userId"], post["title"], post["body"]) not in existing_posts:
                 cursor.execute(
@@ -151,13 +161,18 @@ class UpdateWorker(QtCore.QThread):
                     (post["userId"], post["title"], post["body"]),
                 )
                 connection.commit()
-
+                
         connection.close()
+    
         self.update_finished.emit()
+        
 
+
+# Настройка интерфейса
 app = QtWidgets.QApplication(sys.argv)
 window = QtWidgets.QWidget()
 
+window.setWindowTitle("Laba4")
 window.resize(800, 600)
 
 search_line = QtWidgets.QLineEdit()
@@ -184,40 +199,23 @@ text_box = QtWidgets.QHBoxLayout()
 progress_bar = QtWidgets.QProgressBar()
 status_label = QtWidgets.QLabel("")
 
-
-main_box.addLayout(text_box)  
-main_box.addLayout(btn_box)    
-main_box.addWidget(upload_btn)  
-main_box.addWidget(progress_bar)  
-main_box.addWidget(search_line) 
-main_box.addWidget(main_table)    
-main_box.addWidget(status_label)   
-
-
-text_box.addWidget(postUserID_text)
-text_box.addWidget(postTitle_text)
-text_box.addWidget(postBody_text)
-
-
 btn_box.addWidget(add_btn)
-btn_box.addWidget(update_btn)
+
 btn_box.addWidget(del_btn)
+
+
+
+main_box.addWidget(upload_btn)
+main_box.addWidget(search_line)
+main_box.addWidget(main_table)
+main_box.addLayout(text_box)
+main_box.addLayout(btn_box)
+main_box.addWidget(progress_bar)
+main_box.addWidget(status_label)
 
 window.setLayout(main_box)
 
-
-main_box.setStretch(0, 0)  
-main_box.setStretch(1, 0) 
-main_box.setStretch(2, 0) 
-main_box.setStretch(3, 0)  
-main_box.setStretch(4, 0)  
-main_box.setStretch(5, 1)  
-main_box.setStretch(6, 0)  
-
 connection = create_connection()
-if connection:
-    create_table()  
-
 main_model = QtSql.QSqlTableModel()
 main_model.setTable("posts")
 main_model.setEditStrategy(QtSql.QSqlTableModel.OnFieldChange)
@@ -228,23 +226,20 @@ main_model.setHeaderData(1, QtCore.Qt.Horizontal, "User ID")
 main_model.setHeaderData(2, QtCore.Qt.Horizontal, "Title")
 main_model.setHeaderData(3, QtCore.Qt.Horizontal, "Body")
 
-
-main_table.setModel(main_model)
-
-
-for i in range(main_model.columnCount()):
-    main_table.horizontalHeader().setSectionResizeMode(i, QtWidgets.QHeaderView.Stretch)
-
 upload_worker = UploadWorker()
 upload_worker.progress_updated.connect(progress_bar.setValue)
 
 upload_btn.clicked.connect(lambda: upload_worker.start())
-add_btn.clicked.connect(add_record)
+
+add_record_window = AddRecordWindow()
+add_btn.clicked.connect(add_record_window.show)  # Open AddRecordWindow when "Add" button is clicked
+
 update_btn.clicked.connect(lambda: update_record(selection_model.currentIndex()))
 del_btn.clicked.connect(delete_record)
 search_line.textChanged.connect(search_post)
 
 main_table.setModel(main_model)
+main_table.verticalHeader().setVisible(False)
 selection_model = main_table.selectionModel()
 
 update_timer = QTimer()
@@ -252,6 +247,7 @@ update_timer.setInterval(10000)
 update_timer.start()
 
 update_worker = UpdateWorker()
+
 update_worker.update_finished.connect(main_model.select) 
 update_timer.timeout.connect(lambda: update_worker.start())
 
